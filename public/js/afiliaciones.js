@@ -1,9 +1,9 @@
 // Persona 3: pantallas de Afiliación SINPE Móvil e Historial de afiliaciones
 // (las usan el cliente y el administrador; la diferencia la pone el rol).
 // Rutas que usa (ver docs/API.md):
-//   GET    /api/afiliaciones/ficha[?idCliente=]   POST /api/afiliaciones
-//   PUT    /api/afiliaciones/:numero               DELETE /api/afiliaciones/:numero
-//   GET    /api/afiliaciones/historial             GET /api/clientes (buscador del admin)
+//   GET    /api/afiliaciones/:idCliente            POST   /api/afiliaciones
+//   POST   /api/afiliaciones/:numero/traslado      DELETE /api/afiliaciones/:numero
+//   GET    /api/historial-afiliaciones             GET    /api/clientes (buscador del admin)
 
 /* =====================================================================
    AFILIACIÓN SINPE MÓVIL · modos: 'afiliar' (por defecto), 'trasladar', 'desafiliar'
@@ -27,7 +27,7 @@ async function vistaAfiliacion() {
   const extra = () => (esAdmin ? { idCliente: st.idCliente } : {});
 
   async function cargar() {
-    st.datos = st.idCliente ? await pedir(`/afiliaciones/ficha${esAdmin ? `?idCliente=${st.idCliente}` : ''}`) : null;
+    st.datos = st.idCliente ? await pedir(`/afiliaciones/${st.idCliente}`) : null;
     st.modo = 'afiliar'; st.numOp = null; st.ctaNueva = null;
     const libres = st.datos ? st.datos.telefonos.filter((t) => t.estado === 'NO_AFILIADO') : [];
     if (!libres.some((t) => t.numero === st.numSel)) st.numSel = libres[0]?.numero || null;
@@ -219,7 +219,7 @@ async function vistaAfiliacion() {
           await pedir('/afiliaciones', 'POST', { ...extra(), numero: st.numSel, iban: st.ctaSel });
           toast(`Número ${tel(st.numSel)} afiliado a ${ibanCorto(st.ctaSel)}`);
         } else if (st.modo === 'trasladar') {
-          await pedir(`/afiliaciones/${st.numOp}`, 'PUT', { ...extra(), iban: st.ctaNueva });
+          await pedir(`/afiliaciones/${st.numOp}/traslado`, 'POST', { ...extra(), iban: st.ctaNueva });
           toast(`Número ${tel(st.numOp)} trasladado a ${ibanCorto(st.ctaNueva)}`);
         } else {
           await pedir(`/afiliaciones/${st.numOp}`, 'DELETE');
@@ -247,7 +247,7 @@ async function vistaHistorial() {
   const esAdmin = document.body.dataset.rol === 'admin';
   await iniciarPagina('SINPE Móvil', esAdmin ? 'Historial de afiliaciones' : 'Historial de mis afiliaciones');
   const vista = document.getElementById('vista');
-  const eventos = await pedir('/afiliaciones/historial');
+  const eventos = await pedir('/historial-afiliaciones');
   const numeros = [...new Set(eventos.map((e) => e.numero))].sort();
   const f = { num: 'all', evento: 'todos', q: '', por: 'todos', desde: '', hasta: '' };
 

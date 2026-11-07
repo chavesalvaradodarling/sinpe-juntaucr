@@ -37,7 +37,13 @@ function datosIniciales() {
       { idUsuario: 6, idEntidad: 2, usuario: 'luis.rojas', rol: 'cliente', idCliente: 2 },
       { idUsuario: 7, idEntidad: 3, usuario: 'admin.bcr', rol: 'admin', idCliente: null, nombre: 'Diego Arias' },
       { idUsuario: 8, idEntidad: 3, usuario: 'ana.mora', rol: 'cliente', idCliente: 1 },
-      { idUsuario: 9, idEntidad: 1, usuario: 'carla.vega', rol: 'cliente', idCliente: 4 }
+      { idUsuario: 9, idEntidad: 1, usuario: 'carla.vega', rol: 'cliente', idCliente: 4 },
+      { idUsuario: 10, idEntidad: 1, usuario: 'cliente.demo', rol: 'cliente', idCliente: 1 },
+      { idUsuario: 11, idEntidad: 1, usuario: 'admin.demo', rol: 'admin', idCliente: null, nombre: 'Carlos Jiménez' }
+    ],
+    matriculadas: [
+      { idCliente: 1, idEntidad: 1, idCuenta: 7 },
+      { idCliente: 1, idEntidad: 1, idCuenta: 5 }
     ],
     cuentas: [
       { idCuenta: 1, idCliente: 1, idEntidad: 1, moneda: 'CRC', iban: 'CR21018101001234567801', saldo: 125400, estado: 'ACTIVA', fechaApertura: '2026-09-02' },
@@ -140,6 +146,14 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
   const cuentasDe = (idCliente) => BD.cuentas.filter((c) => c.idCliente === idCliente && c.idEntidad === ent)
     .map((c) => ({ ...c, numeros: BD.afiliaciones.filter((a) => a.idCuenta === c.idCuenta).map((a) => a.numero) }));
   const guardar = () => demoGuardar(DEMO_CLAVE, BD);
+  const conDatos = (c) => {
+    const cl = cliente(c.idCliente);
+    return { ...c, titular: dNombre(cl), identificacion: cl.identificacion, numeros: BD.afiliaciones.filter((a) => a.idCuenta === c.idCuenta).map((a) => a.numero) };
+  };
+  const datosTercero = (c) => ({ iban: c.iban, titular: dNombre(cliente(c.idCliente)), entidad: entidad(c.idEntidad).nombre, moneda: c.moneda, estado: c.estado });
+  const afiliacionesVigentes = () => BD.afiliaciones
+    .map((a) => ({ a, c: cuenta(a.idCuenta) })).filter(({ c }) => c.idEntidad === ent)
+    .map(({ a, c }) => { const cl = cliente(c.idCliente); return { numero: a.numero, idCliente: cl.idCliente, titular: dNombre(cl), identificacion: cl.identificacion, iban: c.iban, fechaAfiliacion: a.fecha }; });
   const idObjetivo = () => (esAdmin ? Number(b.idCliente ?? q.get('idCliente')) : sesion.idCliente);
   const registrarHistorial = (numero, idCuenta, accion) =>
     BD.historial.push({ id: BD.historial.length + 1, numero, idCuenta, accion, fecha: dAhora(), idUsuario: sesion.idUsuario });
@@ -178,33 +192,43 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
     ['PUT', /^\/clientes\/(\d+)$/, (m) => actualizarCliente(Number(m[1]), b, true)],
 
     // ================= Persona 2 · Cuentas y teléfonos =================
-    ['GET', /^\/cuentas$/, () => {
-      const lista = esAdmin ? BD.cuentas.filter((c) => c.idEntidad === ent) : BD.cuentas.filter((c) => c.idEntidad === ent && c.idCliente === sesion.idCliente);
-      return dOk(lista.map((c) => {
-        const cl = cliente(c.idCliente);
-        return { ...c, titular: dNombre(cl), identificacion: cl.identificacion, numeros: BD.afiliaciones.filter((a) => a.idCuenta === c.idCuenta).map((a) => a.numero) };
-      }));
-    }],
-    ['GET', /^\/cuentas\/iban-sugerido$/, () => {
-      const cod = entidad(ent).codigo.slice(-3);
-      const n = (k) => Array.from({ length: k }, () => Math.floor(Math.random() * 10)).join('');
-      return dOk({ iban: `CR${n(2)}0${cod}${n(14)}` });
+    ['GET', /^\/cuentas$/, () => (esAdmin ? dOk(BD.cuentas.filter((c) => c.idEntidad === ent).map(conDatos)) : dError('No autorizado', 403))],
+    ['GET', /^\/mis-cuentas$/, () => dOk(BD.cuentas.filter((c) => c.idEntidad === ent && c.idCliente === sesion.idCliente).map(conDatos))],
+    ['GET', /^\/resumen$/, () => {
+      const cuentasEnt = BD.cuentas.filter((c) => c.idEntidad === ent);
+      if (esAdmin) {
+        const ids = clientesEntidad().map(cliente);
+        const hace30 = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+        return dOk({
+          clientes: { activos: ids.filter((c) => c.estado === 'ACTIVO').length, inactivos: ids.filter((c) => c.estado !== 'ACTIVO').length },
+          cuentas: { total: cuentasEnt.length, bloqueadas: cuentasEnt.filter((c) => c.estado === 'BLOQUEADA').length, inactivas: cuentasEnt.filter((c) => c.estado === 'INACTIVA').length },
+          numerosAfiliados: BD.afiliaciones.filter((a) => cuenta(a.idCuenta).idEntidad === ent).length,
+          movimientosPeriodo: BD.transferencias.filter((t) => t.fecha.slice(0, 10) >= hace30 && (cuenta(t.origen).idEntidad === ent || cuenta(t.destino).idEntidad === ent)).length,
+          afiliaciones: afiliacionesVigentes()
+        });
+      }
+      const tels = telefonosDe(sesion.idCliente);
+      return dOk({
+        cuentas: cuentasEnt.filter((c) => c.idCliente === sesion.idCliente).map(conDatos),
+        telefonos: { total: tels.length, afiliados: tels.filter((t) => t.estado === 'AFILIADO').length },
+        ultimos: movimientos(null, null, null).slice(0, 5)
+      });
     }],
     ['POST', /^\/cuentas$/, () => {
       const c = cliente(b.idCliente);
-      const iban = String(b.iban || '').replace(/\s/g, '').toUpperCase();
+      const n = (k) => Array.from({ length: k }, () => Math.floor(Math.random() * 10)).join('');
+      const iban = `CR${n(2)}0${entidad(ent).codigo.slice(-3)}${n(14)}`; // el procedimiento lo genera
       if (!c) return dError('No existe el titular');
       if (c.estado !== 'ACTIVO') return dError('El titular está inactivo');
       if (!['CRC', 'USD'].includes(b.moneda)) return dError('La moneda no existe');
-      if (iban.length !== 22) return dError('El IBAN debe tener 22 caracteres');
-      if (cuentaIban(iban)) return dError('El IBAN ya existe');
+
       if (Number(b.saldo) < 0) return dError('El saldo no puede ser negativo');
       BD.cuentas.push({ idCuenta: BD.cuentas.length + 1, idCliente: c.idCliente, idEntidad: ent, moneda: b.moneda, iban, saldo: Number(b.saldo) || 0, estado: 'ACTIVA', fechaApertura: b.fechaApertura || dAhora().slice(0, 10) });
       guardar();
-      return dOk({ mensaje: 'Cuenta registrada' });
+      return dOk({ iban });
     }],
-    ['PUT', /^\/cuentas\/([A-Z0-9]+)\/estado$/, (m) => {
-      const c = cuentaIban(m[1]);
+    ['PATCH', /^\/cuentas\/(\d+)\/estado$/, (m) => {
+      const c = cuenta(Number(m[1]));
       if (!c || c.idEntidad !== ent) return dError('La cuenta no existe', 404);
       if (c.estado === b.estado) return dError('La cuenta ya tiene ese estado');
       c.estado = b.estado; guardar();
@@ -231,12 +255,9 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
     }],
 
     // ================= Persona 3 · Afiliaciones SINPE Móvil =================
-    ['GET', /^\/afiliaciones$/, () => dOk(BD.afiliaciones
-      .map((a) => ({ a, c: cuenta(a.idCuenta) }))
-      .filter(({ c }) => c.idEntidad === ent && (esAdmin || c.idCliente === sesion.idCliente))
-      .map(({ a, c }) => { const cl = cliente(c.idCliente); return { numero: a.numero, idCliente: cl.idCliente, titular: dNombre(cl), identificacion: cl.identificacion, iban: c.iban, fechaAfiliacion: a.fecha }; }))],
-    ['GET', /^\/afiliaciones\/ficha$/, () => {
-      const c = cliente(idObjetivo());
+    ['GET', /^\/afiliaciones\/(\d+)$/, (m) => {
+      if (!esAdmin && Number(m[1]) !== sesion.idCliente) return dError('No autorizado', 403);
+      const c = cliente(Number(m[1]));
       if (!c) return dError('No existe el cliente', 404);
       return dOk({ cliente: { ...c, nombre: dNombre(c) }, telefonos: telefonosDe(c.idCliente), cuentas: cuentasDe(c.idCliente) });
     }],
@@ -252,7 +273,7 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
       registrarHistorial(numero, c.idCuenta, 'AFILIACION'); guardar();
       return dOk({ mensaje: 'Teléfono afiliado' });
     }],
-    ['PUT', /^\/afiliaciones\/(\d{8})$/, (m) => {
+    ['POST', /^\/afiliaciones\/(\d{8})\/traslado$/, (m) => {
       const a = afil(m[1]); const nueva = cuentaIban(b.iban);
       if (!a || cuenta(a.idCuenta).idEntidad !== ent) return dError('El teléfono no está afiliado en esta entidad');
       if (!nueva || nueva.idEntidad !== ent) return dError('La cuenta nueva no existe');
@@ -274,7 +295,7 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
       BD.afiliaciones = BD.afiliaciones.filter((x) => x !== a); guardar();
       return dOk({ mensaje: 'Teléfono desafiliado' });
     }],
-    ['GET', /^\/afiliaciones\/historial$/, () => dOk(BD.historial
+    ['GET', /^\/historial-afiliaciones$/, () => dOk(BD.historial
       .map((h) => ({ h, c: cuenta(h.idCuenta) }))
       .filter(({ c }) => c.idEntidad === ent && (esAdmin || c.idCliente === sesion.idCliente))
       .map(({ h, c }) => {
@@ -288,20 +309,22 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
       .sort((x, y) => (x.fechaEvento < y.fechaEvento ? 1 : x.fechaEvento > y.fechaEvento ? -1 : y.idHistorial - x.idHistorial)))],
 
     // ================= Persona 4 · Transferencias y movimientos =================
-    ['GET', /^\/transferencias\/origenes$/, () => dOk(BD.afiliaciones
-      .map((a) => ({ a, c: cuenta(a.idCuenta) }))
-      .filter(({ c }) => c.idEntidad === ent && c.idCliente === sesion.idCliente && c.estado === 'ACTIVA' && c.moneda === 'CRC')
-      .map(({ a, c }) => ({ iban: c.iban, saldo: c.saldo, numero: a.numero })))],
-    ['GET', /^\/transferencias\/destino-sinpe\/(\d+)$/, (m) => {
+    ['GET', /^\/sinpe\/destino\/(\d+)$/, (m) => {
       const t = BD.telefonos.find((x) => x.numero === m[1]);
       if (!t) return dError('Ese número no está registrado en SINPE Móvil', 404);
       const a = afil(t.numero); const c = a && cuenta(a.idCuenta);
       return dOk({ numero: t.numero, titular: dNombre(cliente(t.idCliente)), afiliado: !!a, iban: c?.iban || null, entidad: c ? entidad(c.idEntidad).nombre : null });
     }],
-    ['GET', /^\/transferencias\/destino-iban\/([A-Z0-9]+)$/, (m) => {
-      const c = cuentaIban(m[1]);
-      if (!c) return dError('No existe una cuenta con ese IBAN', 404);
-      return dOk({ iban: c.iban, titular: dNombre(cliente(c.idCliente)), entidad: entidad(c.idEntidad).nombre, moneda: c.moneda, estado: c.estado });
+    ['GET', /^\/cuentas-matriculadas$/, () => dOk((BD.matriculadas || []).filter((x) => x.idCliente === sesion.idCliente && x.idEntidad === ent).map((x) => datosTercero(cuenta(x.idCuenta))))],
+    ['POST', /^\/cuentas-matriculadas$/, () => {
+      const c = cuentaIban(b.iban);
+      if (String(b.iban || '').replace(/\s/g, '').length !== 22) return dError('El IBAN debe tener 22 caracteres');
+      if (!c) return dError('No existe una cuenta con ese IBAN');
+      if (c.idCliente === sesion.idCliente) return dError('Esa cuenta es suya: úsela en "Propias"');
+      BD.matriculadas = BD.matriculadas || [];
+      if (BD.matriculadas.some((x) => x.idCliente === sesion.idCliente && x.idEntidad === ent && x.idCuenta === c.idCuenta)) return dError('Esa cuenta ya está matriculada');
+      BD.matriculadas.push({ idCliente: sesion.idCliente, idEntidad: ent, idCuenta: c.idCuenta }); guardar();
+      return dOk(datosTercero(c));
     }],
     ['POST', /^\/transferencias\/sinpe$/, () => {
       const monto = Number(b.monto);
@@ -335,38 +358,36 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
       BD.transferencias.push(t); guardar();
       return dOk(comprobante(t));
     }],
-    ['GET', /^\/movimientos$/, () => {
-      const desde = q.get('desde') || '2000-01-01'; const hasta = q.get('hasta') || '2100-01-01';
-      const mias = esAdmin ? null : new Set(BD.cuentas.filter((c) => c.idCliente === sesion.idCliente && c.idEntidad === ent).map((c) => c.idCuenta));
-      const filtroIban = q.get('iban') ? cuentaIban(q.get('iban'))?.idCuenta : null;
-      const filtroCliente = q.get('idCliente') ? Number(q.get('idCliente')) : null;
-      return dOk(BD.transferencias.filter((t) => {
-        const dia = t.fecha.slice(0, 10);
-        if (dia < desde || dia > hasta) return false;
-        const o = cuenta(t.origen), d = cuenta(t.destino);
-        if (esAdmin) {
-          if (o.idEntidad !== ent && d.idEntidad !== ent) return false;
-          return !filtroCliente || o.idCliente === filtroCliente || d.idCliente === filtroCliente;
-        }
-        if (filtroIban) return t.origen === filtroIban || t.destino === filtroIban;
-        return mias.has(t.origen) || mias.has(t.destino);
-      }).map((t) => {
-        const o = cuenta(t.origen), d = cuenta(t.destino);
-        let movimiento = null;
-        if (!esAdmin) {
-          const sale = filtroIban ? t.origen === filtroIban : mias.has(t.origen);
-          const entra = filtroIban ? t.destino === filtroIban : mias.has(t.destino);
-          movimiento = sale && entra ? 'ENTRE_MIS_CUENTAS' : sale ? 'ENVIADA' : 'RECIBIDA';
-        }
-        return {
-          idTransferencia: t.id, fecha: t.fecha, tipo: t.tipo, movimiento, monto: t.monto, moneda: o.moneda, detalle: t.detalle,
-          ibanOrigen: o.iban, titularOrigen: `${cliente(o.idCliente).nombres} ${cliente(o.idCliente).primerApellido}`, codigoOrigen: entidad(o.idEntidad).codigo,
-          ibanDestino: d.iban, titularDestino: `${cliente(d.idCliente).nombres} ${cliente(d.idCliente).primerApellido}`, codigoDestino: entidad(d.idEntidad).codigo,
-          telefonoOrigen: t.telO || null, telefonoDestino: t.telD || null
-        };
-      }).sort((x, y) => (x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : y.idTransferencia - x.idTransferencia)));
-    }]
+    ['GET', /^\/movimientos$/, () => dOk(movimientos(q.get('desde'), q.get('hasta'), q.get('cuenta')))]
   ];
+
+  function movimientos(desde = '2000-01-01', hasta = '2100-01-01', ibanFiltro = null) {
+    desde = desde || '2000-01-01'; hasta = hasta || '2100-01-01';
+    const mias = esAdmin ? null : new Set(BD.cuentas.filter((c) => c.idCliente === sesion.idCliente && c.idEntidad === ent).map((c) => c.idCuenta));
+    const filtro = ibanFiltro ? cuentaIban(ibanFiltro)?.idCuenta ?? -1 : null;
+    return BD.transferencias.filter((t) => {
+      const dia = t.fecha.slice(0, 10);
+      if (dia < desde || dia > hasta) return false;
+      const o = cuenta(t.origen), d = cuenta(t.destino);
+      if (filtro !== null) { if (t.origen !== filtro && t.destino !== filtro) return false; if (!esAdmin && !mias.has(filtro)) return false; }
+      if (esAdmin) return o.idEntidad === ent || d.idEntidad === ent;
+      return mias.has(t.origen) || mias.has(t.destino);
+    }).map((t) => {
+      const o = cuenta(t.origen), d = cuenta(t.destino);
+      let movimiento = null;
+      if (!esAdmin) {
+        const sale = filtro !== null ? t.origen === filtro : mias.has(t.origen);
+        const entra = filtro !== null ? t.destino === filtro : mias.has(t.destino);
+        movimiento = sale && entra ? 'ENTRE_MIS_CUENTAS' : sale ? 'ENVIADA' : 'RECIBIDA';
+      }
+      return {
+        idTransferencia: t.id, fecha: t.fecha, tipo: t.tipo, movimiento, monto: t.monto, moneda: o.moneda, detalle: t.detalle,
+        ibanOrigen: o.iban, titularOrigen: `${cliente(o.idCliente).nombres} ${cliente(o.idCliente).primerApellido}`, codigoOrigen: entidad(o.idEntidad).codigo,
+        ibanDestino: d.iban, titularDestino: `${cliente(d.idCliente).nombres} ${cliente(d.idCliente).primerApellido}`, codigoDestino: entidad(d.idEntidad).codigo,
+        telefonoOrigen: t.telO || null, telefonoDestino: t.telD || null
+      };
+    }).sort((x, y) => (x.fecha < y.fecha ? 1 : x.fecha > y.fecha ? -1 : y.idTransferencia - x.idTransferencia));
+  }
 
   function actualizarCliente(id, datos, puedeEstado) {
     const c = cliente(id);
@@ -393,7 +414,7 @@ function demoApi(ruta, metodo = 'GET', cuerpo = {}) {
   for (const [m, patron, fn] of rutas) {
     const coincide = metodo === m && camino.match(patron);
     if (coincide) {
-      window.rutasDemo.add(`${m} /api${camino.replace(/\/\d{8}$|\/\d+$|\/[A-Z]{2}\d{20}(?=\/|$)/, '/:id')}`);
+      window.rutasDemo.add(`${m} /api${camino.replace(/\/(\d+|[A-Z]{2}\d{20})(?=\/|$)/g, '/:id')}`);
       window.dispatchEvent(new Event('demo-usada'));
       if (!sesion && !['/entidades', '/login', '/sesion'].includes(camino)) return dError('Inicie sesión', 401);
       return fn(coincide);
