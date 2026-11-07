@@ -1,0 +1,1 @@
+-- Persona 1: Ana, Luis, María, Carla, cuentas, teléfonos y afiliaciones del prototipo

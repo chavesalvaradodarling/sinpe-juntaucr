@@ -1,0 +1,1 @@
+-- Persona 1: script sinpe_movil + tablas usuario y tipo_cambio
