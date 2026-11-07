@@ -1,7 +1,9 @@
 // Persona 1: entidades, inicio y cierre de sesión
 const router = require('express').Router();
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const db = require('../db');
+const auth = require('../middleware/auth');
 
 // Formato de respuesta: { ok: true, datos } o { ok: false, mensaje }
 
@@ -62,6 +64,99 @@ router.get('/sesion', (req, res) => {
     return res.status(401).json({ ok: false, mensaje: 'No hay sesión' });
   }
   res.json({ ok: true, datos: req.session.usuario });
+});
+
+// ----------------------------------------------------------------------------
+// Mis datos (cliente)
+// ----------------------------------------------------------------------------
+
+// GET /api/perfil: los datos del cliente que inició sesión
+router.get('/perfil', auth(['cliente']), async (req, res) => {
+  try {
+    const [filas] = await db.query(
+      `SELECT id_cliente AS idCliente, identificacion, nombres,
+              primer_apellido AS primerApellido, segundo_apellido AS segundoApellido,
+              CONCAT(nombres, ' ', primer_apellido, ' ', segundo_apellido) AS nombre,
+              correo, fecha_registro AS fechaRegistro, estado
+       FROM cliente WHERE id_cliente = ?`,
+      [req.session.usuario.idCliente]
+    );
+    res.json({ ok: true, datos: filas[0] });
+  } catch (err) {
+    responderError(res, err);
+  }
+});
+
+// PUT /api/perfil: { nombres, primerApellido, segundoApellido, correo }
+// El cliente NO cambia su propio estado: se manda NULL.
+router.put('/perfil', auth(['cliente']), async (req, res) => {
+  const { nombres, primerApellido, segundoApellido, correo } = req.body;
+  const { idEntidad, idCliente } = req.session.usuario;
+  try {
+    await db.query('CALL sp_editar_cliente(?, ?, ?, ?, ?, ?, NULL)',
+      [idEntidad, idCliente, nombres, primerApellido, segundoApellido, correo]);
+    // el nombre del menú sale de la sesión: se actualiza
+    req.session.usuario.nombre = `${nombres} ${primerApellido} ${segundoApellido}`;
+    res.json({ ok: true, datos: { mensaje: 'Datos actualizados' } });
+  } catch (err) {
+    responderError(res, err);
+  }
+});
+
+// ----------------------------------------------------------------------------
+// Clientes (administrador)
+// ----------------------------------------------------------------------------
+
+// GET /api/clientes: clientes de la entidad de la sesión
+router.get('/clientes', auth(['admin']), async (req, res) => {
+  try {
+    const [resultados] = await db.query('CALL sp_listar_clientes(?)', [req.session.usuario.idEntidad]);
+    const clientes = resultados[0].map((c) => ({
+      ...c,
+      telefonos: c.telefonos ? c.telefonos.split(',') : []   // '88881111,88882222' -> ['88881111', '88882222']
+    }));
+    res.json({ ok: true, datos: clientes });
+  } catch (err) {
+    responderError(res, err);
+  }
+});
+
+// Usuario sugerido: primer nombre + primer apellido, sin tildes ni espacios ("ana.mora")
+const limpiar = (t) => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .toLowerCase().replace(/[^a-z0-9]/g, '');
+
+// POST /api/clientes: { identificacion, nombres, primerApellido, segundoApellido, correo }
+router.post('/clientes', auth(['admin']), async (req, res) => {
+  const { identificacion, nombres, primerApellido, segundoApellido, correo } = req.body;
+  if (!identificacion || !nombres || !primerApellido || !segundoApellido || !correo) {
+    return res.status(400).json({ ok: false, mensaje: 'Complete todos los datos del cliente' });
+  }
+  try {
+    const usuario = `${limpiar(nombres.split(' ')[0])}.${limpiar(primerApellido)}`;
+    const contrasenaTemporal = crypto.randomBytes(4).toString('hex');   // 8 caracteres, ej. 'a3f9c210'
+    const hash = await bcrypt.hash(contrasenaTemporal, 10);
+
+    const [resultados] = await db.query('CALL sp_registrar_cliente(?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.session.usuario.idEntidad, identificacion, nombres, primerApellido, segundoApellido, correo, usuario, hash]);
+    const nuevo = resultados[0][0];   // { idCliente, usuario }
+
+    // La contraseña temporal se muestra UNA vez al admin para entregarla; en la BD solo queda el hash
+    res.json({ ok: true, datos: { idCliente: nuevo.idCliente, usuario: nuevo.usuario, contrasenaTemporal } });
+  } catch (err) {
+    responderError(res, err);
+  }
+});
+
+// PUT /api/clientes/:id: { nombres, primerApellido, segundoApellido, correo, estado }
+router.put('/clientes/:id', auth(['admin']), async (req, res) => {
+  const { nombres, primerApellido, segundoApellido, correo, estado } = req.body;
+  try {
+    await db.query('CALL sp_editar_cliente(?, ?, ?, ?, ?, ?, ?)',
+      [req.session.usuario.idEntidad, req.params.id, nombres, primerApellido, segundoApellido, correo, estado]);
+    res.json({ ok: true, datos: { mensaje: 'Cliente actualizado' } });
+  } catch (err) {
+    responderError(res, err);
+  }
 });
 
 module.exports = router;
