@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Iniciar sesión · SINPE JUNTAUCR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body>
+  <main class="login">
+    <!-- Ilustración geométrica (solo decorativa) -->
+    <div class="arte" aria-hidden="true">
+      <span style="left:12%;top:6%;width:42%;height:62%;background:#5b60a8;border-radius:24px 24px 0 0"></span>
+      <span style="left:30%;top:12%;width:110px;height:110px;background:#c3cae8;border-radius:50%"></span>
+      <span style="right:-6%;top:28%;width:46%;height:30%;background:#c3cae8;border-radius:120px 0 0 0"></span>
+      <span style="left:-8%;top:30%;width:180px;height:180px;background:#f1a8c6;border-radius:50%"></span>
+      <span style="left:22%;top:44%;width:44%;height:40%;background:#424790;border-radius:50%"></span>
+      <span style="left:31%;top:52%;width:26%;height:24%;border:3px solid #e9530d;border-radius:50%"></span>
+      <span style="left:34%;top:55%;width:20%;height:18%;background:#c3cae8;border-radius:50%"></span>
+      <span style="right:10%;top:62%;width:22%;height:3%;background:#f1a8c6;border-radius:3px"></span>
+      <span style="right:10%;top:67%;width:22%;height:3%;background:#f1a8c6;border-radius:3px"></span>
+      <span style="right:10%;top:72%;width:22%;height:3%;background:#f1a8c6;border-radius:3px"></span>
+      <span style="left:-12%;bottom:-14%;width:300px;height:300px;background:#e9530d;border-radius:50%"></span>
+      <span style="left:46%;bottom:0;width:10%;height:22%;background:#5b60a8"></span>
+      <span style="right:28%;top:44%;width:16px;height:16px;background:#fff;border-radius:50%"></span>
+      <span style="left:30%;top:30%;width:22px;height:22px;background:#f1a8c6;border-radius:50%"></span>
+    </div>
+
+    <div class="login-form">
+      <form class="login-caja" id="form-login" novalidate>
+        <div class="logo">JU</div>
+        <h1>INICIAR<br>SESIÓN</h1>
+        <p class="muted">Elija su entidad financiera e ingrese con su usuario.</p>
+
+        <label class="campo">Entidad financiera
+          <select class="entrada" id="entidad" required></select>
+        </label>
+        <div class="form-fila" style="margin-top:2px">
+          <label class="campo">Usuario
+            <input class="entrada" id="usuario" autocomplete="username" required>
+          </label>
+          <label class="campo">Contraseña
+            <input class="entrada" id="contrasena" type="password" autocomplete="current-password" required>
+          </label>
+        </div>
+
+        <button class="boton ancho" style="margin-top:22px" id="ingresar">Ingresar</button>
+        <div id="mensaje" role="alert"></div>
+        <p class="muted small" style="margin-top:16px">¿No tiene usuario? Solicítelo en su entidad: los clientes los registra el banco.</p>
+      </form>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/demo.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/acceso.js"></script>
+  <script>paginaLogin();</script>
+</body>
+</html>

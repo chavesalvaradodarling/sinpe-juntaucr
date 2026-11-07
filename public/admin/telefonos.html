@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SINPE JUNTAUCR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/estilos.css">
+</head>
+<body data-rol="admin" data-pagina="telefonos">
+  <div class="app">
+    <aside class="lateral" id="lateral"></aside>
+    <main class="principal">
+      <header class="encabezado">
+        <div>
+          <div class="miga" id="miga"></div>
+          <h1 id="titulo"></h1>
+        </div>
+        <div class="etiquetas" id="etiquetas"></div>
+      </header>
+      <section id="vista"><div class="cargando">Cargando…</div></section>
+    </main>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/demo.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/acceso.js"></script>
+  <script src="/js/cuentas.js"></script>
+  <script>correrPagina(adminTelefonos);</script>
+</body>
+</html>
