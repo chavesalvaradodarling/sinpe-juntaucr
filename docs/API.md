@@ -1,93 +1,106 @@
 # Contrato de la API · SINPE JUNTAUCR
 
-La interfaz (carpeta `public/`) ya está terminada y llama a estas rutas.
-Cada persona programa **sus** rutas en `src/routes/<su-archivo>.js` respetando
-exactamente el método, la ruta y los nombres de campos (camelCase).
+Son las rutas del documento **"División del trabajo"** (6 nov). Aquí se agregan los
+**nombres exactos de los campos** que espera la interfaz, para que cada persona programe
+su ruta sin adivinar. Si alguien necesita cambiar algo, avisa al grupo primero.
 
 **Formato de respuesta (todas):** `{ ok: true, datos }` o `{ ok: false, mensaje }`.
-El `mensaje` se muestra tal cual al usuario (por ejemplo, el error del procedimiento almacenado).
+El `mensaje` (por ejemplo, el de `SIGNAL SQLSTATE '45000'`) se muestra tal cual en pantalla.
 
-**Sesión** (la arma Persona 1 en `/login`):
-`req.session.usuario = { idUsuario, idCliente, rol: 'cliente'|'admin', idEntidad }`.
-Todo se filtra por la entidad de la sesión. Un cliente solo ve lo suyo.
+**Sesión:** `req.session.usuario = { idUsuario, idCliente, rol: 'cliente'|'admin', idEntidad }`.
+La entidad y el rol salen siempre de la sesión, nunca de lo que mande el navegador.
+**"Ambos"** = el mismo endpoint filtra solo: el cliente ve lo suyo y el admin ve toda la entidad.
+Campos en camelCase.
 
 ## Datos de ejemplo (mientras una ruta no exista)
 
-`public/js/api.js` detecta cuando Express responde **404 sin JSON** (la ruta todavía
-no está programada) y usa `public/js/demo.js`, que simula la ruta con datos de ejemplo
-y las mismas reglas del enunciado. En la pantalla aparece la etiqueta amarilla
-**"Datos de ejemplo"**; al pasar el mouse dice qué rutas faltan.
+`public/js/api.js` detecta cuando Express responde **404 sin JSON** (la ruta no está
+programada) y usa `public/js/demo.js`, que la simula con los datos del prototipo y las reglas
+del enunciado. En pantalla aparece la etiqueta amarilla **"Datos de ejemplo"**; al pasar el
+mouse dice qué rutas faltan. Cuando la ruta real responde, la interfaz la usa sola.
 
-👉 En cuanto una ruta real responda (aunque sea con error en JSON), la interfaz la usa
-sola y deja de usar el ejemplo. No hay que tocar nada del frontend.
+Usuarios de ejemplo (contraseña `prueba123`, Banco JUNTAUCR): `cliente.demo` (Ana) y
+`admin.demo`; también `ana.mora`, `luis.rojas`, `admin.juntaucr`.
 
-Usuarios de ejemplo (contraseña `prueba123`): `admin.juntaucr`, `ana.mora`, `luis.rojas`
-en Banco JUNTAUCR; `admin.bn` en BN; `admin.bcr`, `ana.mora` en BCR.
+## Archivos de la interfaz por persona
+
+| Persona | Archivo | Pantallas |
+|---|---|---|
+| 1 | `public/index.html`, `js/acceso.js`, `js/menu.js`, `js/ui.js`, `js/api.js`, `css/estilos.css` | Login · Mis datos · Clientes · menú y estilos |
+| 2 | `js/cuentas.js` | Inicio (cliente y admin) · Cuentas IBAN · Mis teléfonos · Teléfonos |
+| 3 | `js/afiliaciones.js` | Afiliar número · Afiliaciones SINPE · Historial |
+| 4 | `js/transferencias.js` | SINPE · IBAN · comprobante y rechazo · Movimientos |
+
+Cada pantalla es un `.html` en `public/cliente/` o `public/admin/` que carga esos archivos.
 
 ---
 
-## Persona 1 · Acceso y clientes (`src/routes/acceso.js`)
+## Persona 1 · Acceso y clientes
 
-| Método | Ruta | Recibe | Devuelve `datos` | Pantalla |
-|---|---|---|---|---|
-| GET | `/api/entidades` | — | `[{ idEntidad, codigo, nombre }]` | Login |
-| POST | `/api/login` | `{ idEntidad, usuario, contrasena }` | la sesión (igual que `/sesion`) | Login |
-| POST | `/api/logout` | — | `true` | Menú |
-| GET | `/api/sesion` | — | `{ idUsuario, idCliente, rol, idEntidad, entidad, codigo, nombre, identificacion }` · 401 si no hay | Todas |
-| GET | `/api/perfil` | — | `{ idCliente, identificacion, nombres, primerApellido, segundoApellido, nombre, correo, fechaRegistro, estado }` | Cliente · Mis datos |
-| PUT | `/api/perfil` | `{ nombres, primerApellido, segundoApellido, correo }` | `{ mensaje }` | Cliente · Mis datos |
-| GET | `/api/clientes` | — (admin) | `[{ …cliente, nombre, cuentas (cantidad), telefonos: ['88881111'] }]` | Admin · Clientes, buscadores |
-| POST | `/api/clientes` | `{ identificacion, nombres, primerApellido, segundoApellido, correo }` | `{ idCliente, usuario, contrasenaTemporal }` | Admin · Clientes |
-| PUT | `/api/clientes/:id` | `{ nombres, primerApellido, segundoApellido, correo, estado }` | `{ mensaje }` | Admin · Clientes |
+| Método y ruta | Rol | Recibe | Devuelve `datos` |
+|---|---|---|---|
+| `GET /api/entidades` | público | — | `[{ idEntidad, codigo, nombre }]` |
+| `POST /api/login` | público | `{ idEntidad, usuario, contrasena }` | la sesión (como `/sesion`) |
+| `POST /api/logout` | público | — | `true` |
+| `GET /api/sesion` | ambos | — | `{ idUsuario, idCliente, rol, idEntidad, entidad, codigo, nombre, identificacion }` · **401** si no hay sesión |
+| `GET /api/perfil` | cliente | — | `{ idCliente, identificacion, nombres, primerApellido, segundoApellido, nombre, correo, fechaRegistro, estado }` |
+| `PUT /api/perfil` | cliente | `{ nombres, primerApellido, segundoApellido, correo }` | `{ mensaje }` |
+| `GET /api/clientes` | admin | — | `[{ idCliente, identificacion, nombres, primerApellido, segundoApellido, nombre, correo, fechaRegistro, estado, cuentas (cantidad), telefonos: ['88881111'] }]` |
+| `POST /api/clientes` | admin | `{ identificacion, nombres, primerApellido, segundoApellido, correo }` | `{ idCliente, usuario, contrasenaTemporal }` |
+| `PUT /api/clientes/:id` | admin | `{ nombres, primerApellido, segundoApellido, correo, estado }` | `{ mensaje }` |
 
-El login **no** pide rol: el rol sale del usuario. Un cliente INACTIVO no puede entrar.
-`entidad`, `codigo` y `nombre` de la sesión se usan en el menú y los encabezados.
+El login no pide rol: sale del usuario. `nombre` = nombre completo (lo usa el menú).
 
-## Persona 2 · Cuentas y teléfonos (`src/routes/cuentas.js`)
+## Persona 2 · Cuentas y teléfonos
 
-| Método | Ruta | Recibe | Devuelve `datos` | Pantalla |
-|---|---|---|---|---|
-| GET | `/api/cuentas` | — | `[{ idCuenta, idCliente, iban, moneda, saldo, estado, fechaApertura, titular, identificacion, numeros: ['88881111'] }]` (admin: toda la entidad; cliente: las suyas) | Inicio, Cuentas IBAN, Transferir IBAN, Movimientos |
-| GET | `/api/cuentas/iban-sugerido` | — (admin) | `{ iban }` con el código de la entidad | Admin · Cuentas IBAN |
-| POST | `/api/cuentas` | `{ idCliente, moneda: 'CRC'|'USD', iban, saldo, fechaApertura }` | `{ mensaje }` | Admin · Cuentas IBAN |
-| PUT | `/api/cuentas/:iban/estado` | `{ estado: 'ACTIVA'|'BLOQUEADA'|'INACTIVA' }` | `{ mensaje }` | Admin · Cuentas IBAN |
-| GET | `/api/telefonos` | — | `[{ numero, fechaRegistro, idCliente, titular, identificacion, estado: 'NO_AFILIADO'|'AFILIADO'|'AFILIADO_OTRA', iban, entidad, fechaAfiliacion }]` | Teléfonos (admin y cliente), Inicio |
-| POST | `/api/telefonos` | `{ numero, idCliente }` (el cliente no manda `idCliente`: se usa el de la sesión) | `{ mensaje }` | Teléfonos |
+| Método y ruta | Rol | Recibe | Devuelve `datos` |
+|---|---|---|---|
+| `GET /api/resumen` | ambos | — | ver abajo |
+| `GET /api/cuentas` | admin | — | `[cuenta]` de toda la entidad |
+| `POST /api/cuentas` | admin | `{ idCliente, moneda: 'CRC'\|'USD', saldo, fechaApertura }` | `{ iban }` (lo genera `sp_abrir_cuenta`: 22 caracteres con el código de la entidad) |
+| `PATCH /api/cuentas/:id/estado` | admin | `{ estado: 'ACTIVA'\|'BLOQUEADA'\|'INACTIVA' }` (`:id` = idCuenta) | `{ mensaje }` |
+| `GET /api/mis-cuentas` | cliente | — | `[cuenta]` del cliente en la entidad (las usa Persona 4) |
+| `GET /api/telefonos` | ambos | — | `[{ numero, fechaRegistro, idCliente, titular, identificacion, estado: 'NO_AFILIADO'\|'AFILIADO'\|'AFILIADO_OTRA', iban, entidad, fechaAfiliacion }]` |
+| `POST /api/telefonos` | ambos | `{ numero, idCliente }` (el cliente no manda `idCliente`) | `{ mensaje }` |
 
-`numeros` = teléfonos afiliados a esa cuenta. `AFILIADO` = afiliado en esta entidad;
-`AFILIADO_OTRA` = afiliado en otra (se muestra `entidad`). Registrar ≠ afiliar.
+**cuenta** = `{ idCuenta, idCliente, iban, moneda, saldo, estado, fechaApertura, titular, identificacion, numeros: ['88881111'] }`
+(`numeros` = teléfonos afiliados a esa cuenta).
 
-## Persona 3 · Afiliaciones (`src/routes/afiliaciones.js`)
+**`/api/resumen` del cliente:** `{ cuentas: [cuenta], telefonos: { total, afiliados }, ultimos: [movimiento × 5] }`
+**`/api/resumen` del admin:** `{ clientes: { activos, inactivos }, cuentas: { total, bloqueadas, inactivas }, numerosAfiliados, movimientosPeriodo (30 días), afiliaciones: [{ numero, idCliente, titular, identificacion, iban, fechaAfiliacion }] }`
 
-| Método | Ruta | Recibe | Devuelve `datos` | Pantalla |
-|---|---|---|---|---|
-| GET | `/api/afiliaciones` | — | `[{ numero, idCliente, titular, identificacion, iban, fechaAfiliacion }]` (vigentes en la entidad) | Admin · Inicio, Cliente · Afiliación |
-| GET | `/api/afiliaciones/ficha?idCliente=` | admin manda `idCliente`; cliente no | `{ cliente, telefonos: [como /telefonos], cuentas: [como /cuentas] }` | Afiliación |
-| POST | `/api/afiliaciones` | `{ numero, iban, idCliente? }` | `{ mensaje }` | Afiliar |
-| PUT | `/api/afiliaciones/:numero` | `{ iban }` (cuenta nueva) | `{ mensaje }` | Trasladar |
-| DELETE | `/api/afiliaciones/:numero` | — | `{ mensaje }` | Desafiliar |
-| GET | `/api/afiliaciones/historial` | — | `[{ idHistorial, fechaEvento, accion: 'AFILIACION'|'DESAFILIACION', numero, iban, idCliente, titular, usuario }]` | Historial |
+## Persona 3 · Afiliaciones SINPE Móvil
 
-Reglas: cuenta ACTIVA, en colones, del mismo titular que el teléfono y de esta entidad.
-Trasladar = desafiliar + afiliar en una sola transacción (si falla el paso 2, se revierte todo).
+| Método y ruta | Rol | Recibe | Devuelve `datos` |
+|---|---|---|---|
+| `GET /api/afiliaciones/:idCliente` | ambos | (el cliente solo puede pedir el suyo) | `{ cliente: { …, nombre }, telefonos: [como /telefonos], cuentas: [cuenta] }` |
+| `POST /api/afiliaciones` | ambos | `{ numero, iban, idCliente }` (el cliente no manda `idCliente`) | `{ mensaje }` |
+| `DELETE /api/afiliaciones/:numero` | ambos | — | `{ mensaje }` |
+| `POST /api/afiliaciones/:numero/traslado` | ambos | `{ iban }` (cuenta nueva) | `{ mensaje }` |
+| `GET /api/historial-afiliaciones` | ambos | — | `[{ idHistorial, fechaEvento, accion: 'AFILIACION'\|'DESAFILIACION', numero, iban, idCliente, titular, usuario }]` más recientes primero |
 
-## Persona 4 · Transferencias y movimientos (`src/routes/transferencias.js`)
+Los filtros del historial (fechas, evento, titular, número) se hacen en la pantalla.
 
-| Método | Ruta | Recibe | Devuelve `datos` | Pantalla |
-|---|---|---|---|---|
-| GET | `/api/transferencias/origenes` | — | `[{ iban, saldo, numero }]` solo cuentas del cliente con número afiliado | SINPE |
-| GET | `/api/transferencias/destino-sinpe/:numero` | — | `{ numero, titular, afiliado, iban, entidad }` | SINPE (vista previa) |
-| POST | `/api/transferencias/sinpe` | `{ numeroOrigen, numeroDestino, monto, detalle }` | comprobante ↓ | SINPE |
-| GET | `/api/transferencias/destino-iban/:iban` | — | `{ iban, titular, entidad, moneda, estado }` | IBAN (vista previa) |
-| POST | `/api/transferencias/iban` | `{ ibanOrigen, ibanDestino, monto, detalle }` | comprobante ↓ | IBAN |
-| GET | `/api/movimientos?desde=&hasta=[&iban=][&idCliente=]` | fechas `AAAA-MM-DD` | `[{ idTransferencia, fecha, tipo: 'SINPE_MOVIL'|'IBAN', movimiento: 'ENVIADA'|'RECIBIDA'|'ENTRE_MIS_CUENTAS'|null, monto, moneda, detalle, ibanOrigen, titularOrigen, codigoOrigen, ibanDestino, titularDestino, codigoDestino, telefonoOrigen, telefonoDestino }]` más recientes primero | Movimientos, Inicio |
+## Persona 4 · Transferencias y movimientos
 
-**Comprobante:** `{ idTransferencia, fecha, tipo, monto, moneda, detalle, ibanOrigen, entidadOrigen, ibanDestino, entidadDestino, titularDestino, telefonoOrigen, telefonoDestino, saldoAntes, saldoDespues }`.
+| Método y ruta | Rol | Recibe | Devuelve `datos` |
+|---|---|---|---|
+| `GET /api/sinpe/destino/:numero` | cliente | — | `{ numero, titular, afiliado, iban, entidad }` |
+| `POST /api/transferencias/sinpe` | cliente | `{ numeroOrigen, numeroDestino, monto, detalle }` | comprobante |
+| `POST /api/transferencias/iban` | cliente | `{ ibanOrigen, ibanDestino, monto, detalle }` | comprobante |
+| `GET /api/cuentas-matriculadas` | cliente | — | `[{ iban, titular, entidad, moneda, estado }]` (terceros del cliente) |
+| `POST /api/cuentas-matriculadas` | cliente | `{ iban }` | la cuenta matriculada (misma forma) |
+| `GET /api/movimientos?desde=&hasta=&cuenta=` | ambos | fechas `AAAA-MM-DD`; `cuenta` = IBAN (opcional) | `[movimiento]` más recientes primero |
 
-El SINPE se elige por **cuenta**, pero cada opción lleva su número afiliado: al backend
-llega `numeroOrigen` (teléfono), como pide el enunciado (2.8). `movimiento` es `null` para el admin.
+**comprobante** = `{ idTransferencia, fecha, tipo, monto, moneda, detalle, ibanOrigen, entidadOrigen, ibanDestino, entidadDestino, titularDestino, telefonoOrigen, telefonoDestino, saldoAntes, saldoDespues }`
 
-⚠️ **Pendiente de confirmar con el profe:** la interfaz trata la transferencia IBAN como
-**misma moneda** (regla 8). El comentario de `01_schema.sql` menciona una tabla `tipo_cambio`;
-si se decide convertir monedas, el comprobante puede agregar `montoDestino`, `monedaDestino`
-y `tipoCambio` (la pantalla ya los muestra si vienen).
+**movimiento** = `{ idTransferencia, fecha, tipo: 'SINPE_MOVIL'|'IBAN', movimiento: 'ENVIADA'|'RECIBIDA'|'ENTRE_MIS_CUENTAS'|null, monto, moneda, detalle, ibanOrigen, titularOrigen, codigoOrigen, ibanDestino, titularDestino, codigoDestino, telefonoOrigen, telefonoDestino }`
+(`movimiento` es `null` para el admin).
+
+**SINPE:** el cliente elige la cuenta origen, pero solo salen sus cuentas activas en colones
+con número afiliado (se arman con `/api/mis-cuentas`), una opción por número. Así llega
+`numeroOrigen`, como pide el enunciado (2.8).
+**IBAN:** destino "Propias" (sus otras cuentas) o "Terceros" (cuentas matriculadas).
+Distinta moneda se rechaza (regla 8) hasta que el profe diga otra cosa; si se usa
+`tipo_cambio`, el comprobante puede agregar `montoDestino`, `monedaDestino` y `tipoCambio`
+(la pantalla ya los muestra si vienen).

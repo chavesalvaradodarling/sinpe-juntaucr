@@ -1,9 +1,17 @@
 // Persona 4: Transferir SINPE Móvil, Transferir por IBAN y Movimientos.
 // Rutas que usa (ver docs/API.md):
-//   GET  /api/transferencias/origenes            GET /api/transferencias/destino-sinpe/:numero
-//   POST /api/transferencias/sinpe               GET /api/transferencias/destino-iban/:iban
-//   POST /api/transferencias/iban                GET /api/movimientos?desde=&hasta=[&iban=|&idCliente=]
-//   GET  /api/cuentas (origen IBAN y filtro)     GET /api/clientes (filtro del admin)
+//   GET  /api/sinpe/destino/:numero              POST /api/transferencias/sinpe
+//   GET  /api/cuentas-matriculadas               POST /api/cuentas-matriculadas
+//   POST /api/transferencias/iban                GET  /api/movimientos?desde=&hasta=[&cuenta=]
+//   GET  /api/mis-cuentas (Persona 2: origen)    GET  /api/cuentas (Persona 2: filtro del admin)
+
+// Cuentas origen para SINPE: las del cliente activas, en colones y con número afiliado
+// (una opción por número, porque al procedimiento le llega el teléfono origen).
+async function cargarOrigenes() {
+  const cuentas = await pedir('/mis-cuentas');
+  return cuentas.filter((c) => c.estado === 'ACTIVA' && c.moneda === 'CRC')
+    .flatMap((c) => (c.numeros || []).map((numero) => ({ iban: c.iban, saldo: c.saldo, numero })));
+}
 
 /* ------------------------ Comprobante y rechazo ------------------------ */
 function verComprobante(vista, t, otraVez) {
@@ -66,7 +74,7 @@ function verRechazo(vista, mensaje, corregir) {
 async function clienteSinpe() {
   const sesion = await iniciarPagina('SINPE Móvil', 'Transferencia SINPE Móvil');
   const vista = document.getElementById('vista');
-  let origenes = await pedir('/transferencias/origenes');
+  let origenes = await cargarOrigenes();
   const datos = { origen: origenes[0]?.numero || '', monto: '', destino: '', detalle: '' };
 
   function formulario() {
@@ -102,7 +110,7 @@ async function clienteSinpe() {
       $('destino').value = n.length > 4 ? `${n.slice(0, 4)}-${n.slice(4, 8)}` : n;
       if (n.length !== 8) { $('persona').innerHTML = ''; return; }
       try {
-        const d = await pedir(`/transferencias/destino-sinpe/${n}`);
+        const d = await pedir(`/sinpe/destino/${n}`);
         $('persona').innerHTML = `<div class="persona"><span class="avatar claro peque">${esc(iniciales(d.titular))}</span>
           <div class="crece"><div class="b">${esc(d.titular)}</div>
           <div class="small">${d.afiliado ? `${esc(d.entidad)} · cuenta ${ibanCorto(d.iban)}` : 'Este número no está afiliado a SINPE Móvil'}</div></div>
@@ -126,7 +134,7 @@ async function clienteSinpe() {
         });
         verComprobante(vista, t, async () => {
           Object.assign(datos, { monto: '', destino: '', detalle: '' });
-          origenes = await pedir('/transferencias/origenes');
+          origenes = await cargarOrigenes();
           formulario();
         });
       } catch (err) {
@@ -141,7 +149,7 @@ async function clienteSinpe() {
 async function clienteIban() {
   const sesion = await iniciarPagina('Cuentas', 'Transferencia por IBAN');
   const vista = document.getElementById('vista');
-  let cuentas = await pedir('/cuentas');
+  let [cuentas, terceros] = await Promise.all([pedir('/mis-cuentas'), pedir('/cuentas-matriculadas')]);
   const datos = { origen: '', tipo: 'terceros', propia: '', tercero: '', monto: '', detalle: '' };
 
   function formulario() {
@@ -174,8 +182,11 @@ async function clienteIban() {
             ? `<select class="entrada" id="propia">${propias.map((c) => `
                 <option value="${c.iban}" ${c.iban === datos.propia ? 'selected' : ''}>${ibanTxt(c.iban)} · ${c.moneda} · ${c.estado.toLowerCase()}</option>`).join('')
                 || '<option value="">No tiene otras cuentas</option>'}</select>`
-            : `<input class="entrada mono" id="tercero" maxlength="27" placeholder="CR00 0000 0000 0000 0000 00" value="${esc(datos.tercero)}" aria-label="IBAN destino">
-               <div id="titular" style="margin-top:10px"></div>`}
+            : `${terceros.length
+                ? `<select class="entrada" id="tercero" aria-label="Cuenta de tercero">${terceros.map((c) => `
+                    <option value="${c.iban}" ${c.iban === datos.tercero ? 'selected' : ''}>${esc(c.titular)} · ${ibanTxt(c.iban)} · ${esc(abreviarEntidad(c.entidad))} · ${c.moneda}</option>`).join('')}</select>`
+                : '<div class="small muted">Todavía no tiene cuentas de terceros matriculadas.</div>'}
+               <button type="button" class="enlace" id="matricular" style="margin-top:10px;background:none;border:0;padding:0;cursor:pointer">+ Matricular una cuenta de tercero</button>`}
         </div>
 
         <div class="seccion"><div class="paso"><span class="num">3</span>Monto (${origen.moneda})</div>
@@ -192,42 +203,52 @@ async function clienteIban() {
       if ($('propia')) datos.propia = $('propia').value;
       if ($('tercero')) datos.tercero = $('tercero').value;
     };
+    const matricular = () => {
+      guardar();
+      const m = modal(`<h2>Matricular cuenta de tercero</h2>
+        <p class="small muted">Después aparece en la lista de Terceros para transferirle.</p>
+        <form id="fm"><label class="campo">IBAN de la cuenta
+          <input class="entrada mono" id="nuevoIban" maxlength="27" placeholder="CR00 0000 0000 0000 0000 00"></label>
+          <div class="form-pie"><button type="button" class="boton sec" id="no">Cancelar</button><button class="boton">Matricular</button></div></form>`);
+      const campo = m.querySelector('#nuevoIban');
+      campo.oninput = () => { campo.value = campo.value.replace(/\s/g, '').toUpperCase().replace(/(.{4})/g, '$1 ').trim(); };
+      m.querySelector('#no').onclick = () => m.remove();
+      m.querySelector('#fm').onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          const c = await pedir('/cuentas-matriculadas', 'POST', { iban: campo.value.replace(/\s/g, '') });
+          m.remove();
+          toast(`Cuenta de ${c.titular} matriculada`);
+          terceros = await pedir('/cuentas-matriculadas');
+          datos.tercero = c.iban;
+          formulario();
+        } catch (err) { toast(err.message, 'error'); }
+      };
+    };
     const actualizarBoton = () => {
       const m = montoNumero($('monto').value);
       $('enviar').textContent = m > 0 ? `Transferir ${dinero(m, origen.moneda)}` : 'Transferir';
-    };
-    const buscarTitular = async () => {
-      const limpio = $('tercero').value.replace(/\s/g, '').toUpperCase();
-      $('tercero').value = limpio.replace(/(.{4})/g, '$1 ').trim();
-      if (limpio.length !== 22) { $('titular').innerHTML = ''; return; }
-      try {
-        const d = await pedir(`/transferencias/destino-iban/${limpio}`);
-        $('titular').innerHTML = `<div class="persona"><span class="avatar claro peque">${esc(iniciales(d.titular))}</span>
-          <div class="crece"><div class="b">${esc(d.titular)}</div><div class="small">${esc(d.entidad)} · ${d.moneda === 'CRC' ? 'Colones' : 'Dólares'}</div></div>
-          ${chip(d.estado)}</div>`;
-      } catch (err) {
-        $('titular').innerHTML = `<div class="aviso error">${esc(err.message)}</div>`;
-      }
     };
 
     $('origen').onchange = () => { guardar(); formulario(); };
     enganchar(vista, 'seg-tipo', (v) => { guardar(); datos.tipo = v; formulario(); });
     $('monto').oninput = actualizarBoton;
-    if ($('tercero')) { $('tercero').oninput = buscarTitular; if (datos.tercero) buscarTitular(); }
+    if ($('matricular')) $('matricular').onclick = matricular;
     actualizarBoton();
 
     $('f').onsubmit = async (e) => {
       e.preventDefault();
       guardar();
-      const destino = (datos.tipo === 'propias' ? datos.propia : datos.tercero).replace(/\s/g, '');
+      const destino = datos.tipo === 'propias' ? datos.propia : datos.tercero;
+      if (!destino) { toast('Elija la cuenta destino', 'error'); return; }
       $('enviar').disabled = true;
       try {
         const t = await pedir('/transferencias/iban', 'POST', {
           ibanOrigen: datos.origen, ibanDestino: destino, monto: montoNumero(datos.monto), detalle: datos.detalle
         });
         verComprobante(vista, t, async () => {
-          Object.assign(datos, { monto: '', detalle: '', tercero: '' });
-          cuentas = await pedir('/cuentas');
+          Object.assign(datos, { monto: '', detalle: '' });
+          cuentas = await pedir('/mis-cuentas');
           formulario();
         });
       } catch (err) {
@@ -245,8 +266,8 @@ async function vistaMovimientos() {
   const vista = document.getElementById('vista');
 
   const opciones = esAdmin
-    ? [['', `Todos los clientes de ${sesion.entidad}`], ...(await pedir('/clientes')).map((c) => [c.idCliente, `${c.nombre} · ${c.identificacion}`])]
-    : [['', `Todas mis cuentas de ${sesion.entidad}`], ...(await pedir('/cuentas')).map((c) => [c.iban, `${ibanTxt(c.iban)} · ${c.moneda} · ${c.estado.toLowerCase()}`])];
+    ? [['', `Todas las cuentas de ${sesion.entidad}`], ...(await pedir('/cuentas')).map((c) => [c.iban, `${c.titular} · ${ibanTxt(c.iban)} · ${c.moneda}`])]
+    : [['', `Todas mis cuentas de ${sesion.entidad}`], ...(await pedir('/mis-cuentas')).map((c) => [c.iban, `${ibanTxt(c.iban)} · ${c.moneda} · ${c.estado.toLowerCase()}`])];
 
   const d = new Date();
   const inicioMesAnterior = new Date(d.getFullYear(), d.getMonth() - 1, 1);
@@ -275,7 +296,7 @@ async function vistaMovimientos() {
     const hasta = vista.querySelector('#hasta').value;
     if (desde > hasta) { toast('La fecha inicial no puede ser mayor que la final', 'error'); return; }
     const qs = new URLSearchParams({ desde, hasta });
-    if (sel) qs.set(esAdmin ? 'idCliente' : 'iban', sel);
+    if (sel) qs.set('cuenta', sel);
     const tbody = vista.querySelector('#filas');
     try {
       const movimientos = await pedir(`/movimientos?${qs}`);
