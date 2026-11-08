@@ -37,8 +37,10 @@ const iniciales = (nombre) =>
   String(nombre || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join('').toUpperCase();
 
 // Siglas del logo de cada entidad (por código)
-const SIGLAS = { '0181': 'JU', '0151': 'BN', '0152': 'BCR', '0161': 'BP', '0102': 'BAC' };
-const siglas = (codigo, nombre) => SIGLAS[codigo] || iniciales(nombre);
+const SIGLAS = { '0181': 'JU', '0151': 'BN', '0152': 'BCR', '0161': 'BP', '0102': 'BAC', JUNTAUCR: 'JU' };
+// Si no está en la lista, se usa el código cuando es corto (BAC, BCR, BN, BP) o las iniciales del nombre
+const siglas = (codigo, nombre) =>
+  SIGLAS[codigo] || (codigo && String(codigo).length <= 4 ? String(codigo) : iniciales(nombre || codigo));
 const abreviarEntidad = (nombre) => ({
   'Banco de Costa Rica': 'BCR', 'Banco Nacional de Costa Rica': 'BN',
   'Banco Popular y de Desarrollo Comunal': 'BP', 'BAC Credomatic': 'BAC'
